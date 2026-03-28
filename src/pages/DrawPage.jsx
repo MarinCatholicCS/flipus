@@ -25,6 +25,7 @@ export default function DrawPage() {
   const [tool, setTool] = useState('pen')
   const [color, setColor] = useState('#000000')
   const [strokeSize, setStrokeSize] = useState(4)
+  const [title, setTitle] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [error, setError] = useState(null)
@@ -50,7 +51,7 @@ export default function DrawPage() {
         await setDoc(flipbookRef, {
           createdBy: user.uid,
           createdAt: serverTimestamp(),
-          title: 'Untitled Flipbook',
+          title: title.trim() || 'Untitled Flipbook',
         })
         targetFlipbookId = flipbookRef.id
       }
@@ -88,6 +89,16 @@ export default function DrawPage() {
       <h1 className="text-2xl font-bold">
         {flipbookId ? 'Add a Frame' : 'New Flipbook'}
       </h1>
+
+      {!flipbookId && (
+        <input
+          type="text"
+          placeholder="Flipbook title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full max-w-[500px] rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+        />
+      )}
 
       <ToolBar
         tool={tool}

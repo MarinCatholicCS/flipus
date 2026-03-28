@@ -5,8 +5,11 @@ const API_URL = import.meta.env.VITE_API_URL || ''
  * Returns the public URL of the uploaded frame.
  */
 export async function uploadFrame(blob, flipbookId, frameIndex) {
-  const arrayBuffer = await blob.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+  const base64 = await new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result.split(',')[1])
+    reader.readAsDataURL(blob)
+  })
 
   const res = await fetch(`${API_URL}/api/upload-frame`, {
     method: 'POST',

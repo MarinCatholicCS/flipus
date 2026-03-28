@@ -1,3 +1,11 @@
-export default function FPSSlider() {
-  return <input type="range" min={1} max={24} defaultValue={12} />
+export default function FPSSlider({ value, onChange }) {
+  return (
+    <input
+      type="range"
+      min={1}
+      max={24}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+    />
+  )
 }
