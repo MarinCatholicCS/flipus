@@ -16,13 +16,13 @@ export default function AuthModal({ open, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-80 rounded-lg bg-white p-6 shadow-lg">
-        <h2 className="mb-1 text-lg font-semibold">Sign in to Flipus</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-80 rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-violet-100">
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Sign in to Flipus</h2>
         <p className="mb-6 text-sm text-gray-500">You need an account to submit frames.</p>
         <button
           onClick={handleGoogleSignIn}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50"
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-violet-200 hover:bg-violet-50"
         >
           <svg className="h-5 w-5" viewBox="0 0 48 48">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -34,7 +34,7 @@ export default function AuthModal({ open, onClose }) {
         </button>
         <button
           onClick={onClose}
-          className="mt-3 w-full text-center text-sm text-gray-400 hover:text-gray-600"
+          className="mt-3 w-full text-center text-sm text-gray-400 transition-colors hover:text-gray-600"
         >
           Cancel
         </button>

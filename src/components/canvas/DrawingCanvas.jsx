@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 
 
 const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSize, onHistoryChange }, ref) {
   const canvasRef = useRef(null)
+  const cursorRef = useRef(null)
   const isDrawing = useRef(false)
   const lastPos = useRef(null)
   const history = useRef([])
@@ -18,15 +19,24 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
 
   useImperativeHandle(ref, () => ({
     getBlob: () =>
-      new Promise((resolve) => canvasRef.current.toBlob(resolve, 'image/png')),
+      new Promise((resolve) => {
+        const tmp = document.createElement('canvas')
+        tmp.width = 500
+        tmp.height = 500
+        const tmpCtx = tmp.getContext('2d')
+        tmpCtx.fillStyle = '#ffffff'
+        tmpCtx.fillRect(0, 0, 500, 500)
+        tmpCtx.drawImage(canvasRef.current, 0, 0)
+        tmp.toBlob(resolve, 'image/png')
+      }),
     clear: () => {
       saveSnapshot()
       const ctx = canvasRef.current.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, 500, 500)
+      ctx.clearRect(0, 0, 500, 500)
     },
     paintOnionSkin: (imageUrl, opacity = 0.3) =>
       new Promise((resolve, reject) => {
+        saveSnapshot()
         const img = new Image()
         img.onload = () => {
           const ctx = canvasRef.current.getContext('2d')
@@ -46,14 +56,13 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
       ctx.putImageData(snapshot, 0, 0)
       onHistoryChange?.(history.current.length > 0)
     },
+    clearHistory: () => {
+      history.current = []
+      onHistoryChange?.(false)
+    },
   }), [saveSnapshot, onHistoryChange])
 
-  // Fill canvas with white on mount
-  useEffect(() => {
-    const ctx = canvasRef.current.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, 500, 500)
-  }, [])
+  // Canvas starts transparent — white background is provided by the parent container
 
   const getPos = (e) => {
     const rect = canvasRef.current.getBoundingClientRect()
@@ -137,8 +146,31 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
     ctx.fill()
   }, [tool, color, strokeSize, floodFill, saveSnapshot])
 
+  const updateCursor = useCallback((e) => {
+    if (e.touches || !cursorRef.current || !canvasRef.current) return
+    const rect = canvasRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const scale = rect.width / 500
+    const sizePx = Math.max(strokeSize * scale, 2)
+    const el = cursorRef.current
+    el.style.display = 'block'
+    el.style.left = x + 'px'
+    el.style.top = y + 'px'
+    el.style.width = sizePx + 'px'
+    el.style.height = sizePx + 'px'
+    if (tool === 'eraser') {
+      el.style.borderColor = '#9ca3af'
+      el.style.backgroundColor = 'rgba(255,255,255,0.4)'
+    } else {
+      el.style.borderColor = color
+      el.style.backgroundColor = tool === 'fill' ? 'transparent' : color + '40'
+    }
+  }, [tool, color, strokeSize])
+
   const draw = useCallback((e) => {
     e.preventDefault()
+    updateCursor(e)
     if (!isDrawing.current) return
     const ctx = canvasRef.current.getContext('2d')
     const pos = getPos(e)
@@ -153,28 +185,50 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
     ctx.stroke()
 
     lastPos.current = pos
-  }, [tool, color, strokeSize])
+  }, [tool, color, strokeSize, updateCursor])
 
   const stopDrawing = useCallback(() => {
     isDrawing.current = false
     lastPos.current = null
   }, [])
 
+  const handleMouseLeave = useCallback(() => {
+    isDrawing.current = false
+    lastPos.current = null
+    if (cursorRef.current) cursorRef.current.style.display = 'none'
+  }, [])
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={500}
-      height={500}
-      className="cursor-crosshair touch-none border border-gray-300"
-      style={{ width: '500px', height: '500px', maxWidth: '100%', position: 'relative', zIndex: 1 }}
-      onMouseDown={startDrawing}
-      onMouseMove={draw}
-      onMouseUp={stopDrawing}
-      onMouseLeave={stopDrawing}
-      onTouchStart={startDrawing}
-      onTouchMove={draw}
-      onTouchEnd={stopDrawing}
-    />
+    <div
+      style={{ position: 'relative', width: '500px', maxWidth: '100%', display: 'block' }}
+      onMouseLeave={handleMouseLeave}
+    >
+      <canvas
+        ref={canvasRef}
+        width={500}
+        height={500}
+        className="touch-none rounded-lg border border-violet-200"
+        style={{ width: '500px', maxWidth: '100%', cursor: 'none', display: 'block', position: 'relative', zIndex: 2 }}
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onTouchStart={startDrawing}
+        onTouchMove={draw}
+        onTouchEnd={stopDrawing}
+      />
+      <div
+        ref={cursorRef}
+        style={{
+          display: 'none',
+          position: 'absolute',
+          borderRadius: '50%',
+          border: '1.5px solid black',
+          pointerEvents: 'none',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 2,
+        }}
+      />
+    </div>
   )
 })
 

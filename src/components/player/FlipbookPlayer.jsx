@@ -19,7 +19,7 @@ export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect
 
   if (frames.length === 0) {
     return (
-      <div className="flex h-[500px] w-[500px] items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+      <div className="flex h-[500px] w-[500px] items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-gray-400">
         No frames yet
       </div>
     )
@@ -30,17 +30,17 @@ export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect
       <img
         src={frames[currentIndex]?.url}
         alt={`Frame ${currentIndex + 1}`}
-        className="h-[500px] w-[500px] rounded border border-gray-200 bg-white object-contain"
+        className="h-[500px] w-[500px] rounded-xl border border-violet-100 bg-white object-contain shadow-sm"
       />
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 rounded-xl border border-violet-100 bg-white px-4 py-2.5 shadow-sm">
         <button
           onClick={() => setPlaying((p) => !p)}
-          className="rounded-lg bg-black px-4 py-1.5 text-sm text-white hover:bg-gray-800"
+          className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700"
         >
           {playing ? 'Pause' : 'Play'}
         </button>
         <FPSSlider value={fps} onChange={setFps} />
-        <span className="text-sm text-gray-500">{fps} FPS</span>
+        <span className="text-sm font-mono text-gray-500">{fps} FPS</span>
       </div>
     </div>
   )
