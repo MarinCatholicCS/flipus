@@ -10,8 +10,23 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
       new Promise((resolve) => canvasRef.current.toBlob(resolve, 'image/png')),
     clear: () => {
       const ctx = canvasRef.current.getContext('2d')
-      ctx.clearRect(0, 0, 500, 500)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, 500, 500)
     },
+    paintOnionSkin: (imageUrl, opacity = 0.3) =>
+      new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          const ctx = canvasRef.current.getContext('2d')
+          ctx.save()
+          ctx.globalAlpha = opacity
+          ctx.drawImage(img, 0, 0, 500, 500)
+          ctx.restore()
+          resolve()
+        }
+        img.onerror = reject
+        img.src = imageUrl
+      }),
   }))
 
   // Fill canvas with white on mount

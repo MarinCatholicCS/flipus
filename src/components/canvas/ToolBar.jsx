@@ -4,7 +4,7 @@ const TOOLS = [
   { id: 'fill', label: 'Fill', icon: '🪣' },
 ]
 
-export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear }) {
+export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear, showOnionSkin, setShowOnionSkin, hasOnionSkin, onPaintOnionSkin }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
       {/* Tool buttons */}
@@ -66,6 +66,31 @@ export default function ToolBar({ tool, setTool, color, setColor, strokeSize, se
       >
         Clear
       </button>
+
+      {/* Onion skin controls */}
+      {hasOnionSkin && (
+        <>
+          <div className="h-6 w-px bg-gray-300" />
+          <button
+            onClick={() => setShowOnionSkin((v) => !v)}
+            title="Toggle onion skin overlay"
+            className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+              showOnionSkin
+                ? 'bg-black text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            👁 Onion
+          </button>
+          <button
+            onClick={onPaintOnionSkin}
+            title="Paint previous frame onto canvas"
+            className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            🖼 Stamp
+          </button>
+        </>
+      )}
     </div>
   )
 }

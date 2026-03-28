@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection,
@@ -8,12 +8,15 @@ import {
   getDocs,
   doc,
   setDoc,
+  orderBy,
+  limit,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import { uploadFrame } from '../lib/uploadFrame'
 import DrawingCanvas from '../components/canvas/DrawingCanvas'
 import ToolBar from '../components/canvas/ToolBar'
+import OnionSkin from '../components/canvas/OnionSkin'
 import AuthModal from '../components/ui/AuthModal'
 
 export default function DrawPage() {
@@ -29,8 +32,30 @@ export default function DrawPage() {
   const [submitting, setSubmitting] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [error, setError] = useState(null)
+  const [lastFrameUrl, setLastFrameUrl] = useState(null)
+  const [showOnionSkin, setShowOnionSkin] = useState(true)
+
+  useEffect(() => {
+    if (!flipbookId) return
+    getDocs(
+      query(
+        collection(db, 'flipbooks', flipbookId, 'frames'),
+        orderBy('order', 'desc'),
+        limit(1)
+      )
+    ).then((snap) => {
+      if (!snap.empty) setLastFrameUrl(snap.docs[0].data().url)
+    })
+  }, [flipbookId])
 
   const handleClear = () => canvasRef.current?.clear()
+
+  const handlePaintOnionSkin = () => {
+    if (!lastFrameUrl) return
+    const match = lastFrameUrl.match(/(frames\/[^/]+\/\d+\.png)$/)
+    const proxyUrl = match ? `/api/proxy-frame?key=${match[1]}` : lastFrameUrl
+    canvasRef.current?.paintOnionSkin(proxyUrl, 1)
+  }
 
   const handleSubmit = async () => {
     if (!user) {
@@ -108,14 +133,21 @@ export default function DrawPage() {
         strokeSize={strokeSize}
         setStrokeSize={setStrokeSize}
         onClear={handleClear}
+        hasOnionSkin={!!lastFrameUrl}
+        showOnionSkin={showOnionSkin}
+        setShowOnionSkin={setShowOnionSkin}
+        onPaintOnionSkin={handlePaintOnionSkin}
       />
 
-      <DrawingCanvas
-        ref={canvasRef}
-        tool={tool}
-        color={color}
-        strokeSize={strokeSize}
-      />
+      <div className="relative" style={{ width: '500px', maxWidth: '100%' }}>
+        <DrawingCanvas
+          ref={canvasRef}
+          tool={tool}
+          color={color}
+          strokeSize={strokeSize}
+        />
+        <OnionSkin imageUrl={lastFrameUrl} visible={showOnionSkin} />
+      </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 

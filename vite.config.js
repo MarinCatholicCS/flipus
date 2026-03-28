@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 
 function apiDevPlugin(env) {
   return {
@@ -56,10 +56,52 @@ function apiDevPlugin(env) {
   }
 }
 
+function proxyFramePlugin(env) {
+  return {
+    name: 'proxy-frame',
+    configureServer(server) {
+      server.middlewares.use('/api/proxy-frame', (req, res) => {
+        const url = new URL(req.url, 'http://localhost')
+        const key = url.searchParams.get('key')
+
+        if (!key || !/^frames\/[^/]+\/\d+\.png$/.test(key)) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: 'Invalid key' }))
+          return
+        }
+
+        const R2 = new S3Client({
+          region: 'auto',
+          endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: env.R2_ACCESS_KEY_ID,
+            secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+          },
+        })
+
+        R2.send(new GetObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key }))
+          .then(async ({ Body }) => {
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'image/png')
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+            const chunks = []
+            for await (const chunk of Body) chunks.push(chunk)
+            res.end(Buffer.concat(chunks))
+          })
+          .catch((err) => {
+            console.error('Proxy error:', err)
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: 'Failed to fetch frame' }))
+          })
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [react(), tailwindcss(), apiDevPlugin(env)],
+    plugins: [react(), tailwindcss(), apiDevPlugin(env), proxyFramePlugin(env)],
   }
 })
