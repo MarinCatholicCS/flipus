@@ -4,7 +4,7 @@ const TOOLS = [
   { id: 'fill', label: 'Fill', icon: '🪣' },
 ]
 
-export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear, showOnionSkin, setShowOnionSkin, hasOnionSkin, onPaintOnionSkin }) {
+export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear, onUndo, canUndo, showOnionSkin, setShowOnionSkin, hasOnionSkin, onPaintOnionSkin }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
       {/* Tool buttons */}
@@ -65,6 +65,15 @@ export default function ToolBar({ tool, setTool, color, setColor, strokeSize, se
         className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
       >
         Clear
+      </button>
+
+      {/* Undo */}
+      <button
+        onClick={onUndo}
+        disabled={!canUndo}
+        className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        ↩ Undo
       </button>
 
       {/* Onion skin controls */}

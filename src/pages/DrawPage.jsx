@@ -14,9 +14,11 @@ import {
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import { uploadFrame } from '../lib/uploadFrame'
+import { useFrames } from '../hooks/useFrames'
 import DrawingCanvas from '../components/canvas/DrawingCanvas'
 import ToolBar from '../components/canvas/ToolBar'
 import OnionSkin from '../components/canvas/OnionSkin'
+import FrameStrip from '../components/player/FrameStrip'
 import AuthModal from '../components/ui/AuthModal'
 
 export default function DrawPage() {
@@ -24,6 +26,7 @@ export default function DrawPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const canvasRef = useRef(null)
+  const intervalRef = useRef(null)
 
   const [tool, setTool] = useState('pen')
   const [color, setColor] = useState('#000000')
@@ -34,6 +37,13 @@ export default function DrawPage() {
   const [error, setError] = useState(null)
   const [lastFrameUrl, setLastFrameUrl] = useState(null)
   const [showOnionSkin, setShowOnionSkin] = useState(true)
+  const [canUndo, setCanUndo] = useState(false)
+
+  // Preview panel state
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState(0)
+  const [previewPlaying, setPreviewPlaying] = useState(false)
+  const { frames: previewFrames } = useFrames(flipbookId)
 
   useEffect(() => {
     if (!flipbookId) return
@@ -48,7 +58,32 @@ export default function DrawPage() {
     })
   }, [flipbookId])
 
+  // Mini-player interval
+  useEffect(() => {
+    if (previewPlaying && previewFrames.length > 1) {
+      intervalRef.current = setInterval(() => {
+        setPreviewIndex((prev) => (prev + 1) % previewFrames.length)
+      }, 1000 / 12)
+    } else {
+      clearInterval(intervalRef.current)
+    }
+    return () => clearInterval(intervalRef.current)
+  }, [previewPlaying, previewFrames.length])
+
+  // Stop playing when panel is collapsed
+  useEffect(() => {
+    if (!previewOpen) setPreviewPlaying(false)
+  }, [previewOpen])
+
+  // Clamp index when frame count changes
+  useEffect(() => {
+    if (previewFrames.length > 0 && previewIndex >= previewFrames.length) {
+      setPreviewIndex(previewFrames.length - 1)
+    }
+  }, [previewFrames.length, previewIndex])
+
   const handleClear = () => canvasRef.current?.clear()
+  const handleUndo = () => canvasRef.current?.undo()
 
   const handlePaintOnionSkin = () => {
     if (!lastFrameUrl) return
@@ -133,6 +168,8 @@ export default function DrawPage() {
         strokeSize={strokeSize}
         setStrokeSize={setStrokeSize}
         onClear={handleClear}
+        onUndo={handleUndo}
+        canUndo={canUndo}
         hasOnionSkin={!!lastFrameUrl}
         showOnionSkin={showOnionSkin}
         setShowOnionSkin={setShowOnionSkin}
@@ -140,13 +177,14 @@ export default function DrawPage() {
       />
 
       <div className="relative" style={{ width: '500px', maxWidth: '100%' }}>
+        <OnionSkin imageUrl={lastFrameUrl} visible={showOnionSkin} />
         <DrawingCanvas
           ref={canvasRef}
           tool={tool}
           color={color}
           strokeSize={strokeSize}
+          onHistoryChange={setCanUndo}
         />
-        <OnionSkin imageUrl={lastFrameUrl} visible={showOnionSkin} />
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
@@ -158,6 +196,40 @@ export default function DrawPage() {
       >
         {submitting ? 'Submitting...' : 'Submit Frame'}
       </button>
+
+      {flipbookId && previewFrames.length > 0 && (
+        <div className="w-full max-w-[500px]">
+          <button
+            onClick={() => setPreviewOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            <span>Preview ({previewFrames.length} frame{previewFrames.length !== 1 ? 's' : ''})</span>
+            <span>{previewOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {previewOpen && (
+            <div className="mt-2 flex flex-col items-center gap-3 rounded-lg border border-gray-200 p-3">
+              <img
+                src={previewFrames[previewIndex]?.url}
+                alt={`Preview frame ${previewIndex + 1}`}
+                style={{ width: '160px', height: '160px' }}
+                className="rounded border border-gray-200 bg-white object-contain"
+              />
+              <button
+                onClick={() => setPreviewPlaying((p) => !p)}
+                className="rounded-lg bg-black px-4 py-1.5 text-sm text-white hover:bg-gray-800"
+              >
+                {previewPlaying ? 'Pause' : 'Play'}
+              </button>
+              <FrameStrip
+                frames={previewFrames}
+                currentIndex={previewIndex}
+                onSelect={(i) => { setPreviewPlaying(false); setPreviewIndex(i) }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <AuthModal open={showAuth} onClose={() => setShowAuth(false)} />
     </div>

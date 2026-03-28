@@ -1,14 +1,26 @@
 import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 
-const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSize }, ref) {
+const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSize, onHistoryChange }, ref) {
   const canvasRef = useRef(null)
   const isDrawing = useRef(false)
   const lastPos = useRef(null)
+  const history = useRef([])
+
+  const saveSnapshot = useCallback(() => {
+    const ctx = canvasRef.current.getContext('2d')
+    const snapshot = ctx.getImageData(0, 0, 500, 500)
+    history.current.push(snapshot)
+    if (history.current.length > 20) {
+      history.current.shift()
+    }
+    onHistoryChange?.(history.current.length > 0)
+  }, [onHistoryChange])
 
   useImperativeHandle(ref, () => ({
     getBlob: () =>
       new Promise((resolve) => canvasRef.current.toBlob(resolve, 'image/png')),
     clear: () => {
+      saveSnapshot()
       const ctx = canvasRef.current.getContext('2d')
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, 500, 500)
@@ -27,7 +39,14 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
         img.onerror = reject
         img.src = imageUrl
       }),
-  }))
+    undo: () => {
+      if (history.current.length === 0) return
+      const snapshot = history.current.pop()
+      const ctx = canvasRef.current.getContext('2d')
+      ctx.putImageData(snapshot, 0, 0)
+      onHistoryChange?.(history.current.length > 0)
+    },
+  }), [saveSnapshot, onHistoryChange])
 
   // Fill canvas with white on mount
   useEffect(() => {
@@ -102,6 +121,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
   const startDrawing = useCallback((e) => {
     e.preventDefault()
     const pos = getPos(e)
+    saveSnapshot()
     if (tool === 'fill') {
       floodFill(pos.x, pos.y, color)
       return
@@ -115,7 +135,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
     ctx.arc(pos.x, pos.y, strokeSize / 2, 0, Math.PI * 2)
     ctx.fillStyle = tool === 'eraser' ? '#ffffff' : color
     ctx.fill()
-  }, [tool, color, strokeSize, floodFill])
+  }, [tool, color, strokeSize, floodFill, saveSnapshot])
 
   const draw = useCallback((e) => {
     e.preventDefault()
@@ -146,7 +166,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
       width={500}
       height={500}
       className="cursor-crosshair touch-none border border-gray-300"
-      style={{ width: '500px', height: '500px', maxWidth: '100%' }}
+      style={{ width: '500px', height: '500px', maxWidth: '100%', position: 'relative', zIndex: 1 }}
       onMouseDown={startDrawing}
       onMouseMove={draw}
       onMouseUp={stopDrawing}
