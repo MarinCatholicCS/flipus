@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 
 const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSize, onHistoryChange }, ref) {
   const canvasRef = useRef(null)
@@ -59,6 +59,19 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
     clearHistory: () => {
       history.current = []
       onHistoryChange?.(false)
+    },
+    reset: (imageUrl) => {
+      history.current = []
+      onHistoryChange?.(false)
+      const ctx = canvasRef.current.getContext('2d')
+      ctx.clearRect(0, 0, 500, 500)
+      if (!imageUrl) return Promise.resolve()
+      return new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => { ctx.drawImage(img, 0, 0, 500, 500); resolve() }
+        img.onerror = reject
+        img.src = imageUrl
+      })
     },
   }), [saveSnapshot, onHistoryChange])
 

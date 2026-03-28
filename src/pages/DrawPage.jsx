@@ -8,7 +8,6 @@ import {
   getDocs,
   doc,
   setDoc,
-  orderBy,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -17,7 +16,6 @@ import { useFrames } from '../hooks/useFrames'
 import DrawingCanvas from '../components/canvas/DrawingCanvas'
 import ToolBar from '../components/canvas/ToolBar'
 import OnionSkin from '../components/canvas/OnionSkin'
-import FrameStrip from '../components/player/FrameStrip'
 import AuthModal from '../components/ui/AuthModal'
 
 function getProxyUrl(rawUrl) {
@@ -31,7 +29,8 @@ export default function DrawPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const canvasRef = useRef(null)
-  const intervalRef = useRef(null)
+  // Track all created object URLs so we can revoke them on unmount
+  const createdUrlsRef = useRef([])
 
   const [tool, setTool] = useState('pen')
   const [color, setColor] = useState('#000000')
@@ -40,65 +39,113 @@ export default function DrawPage() {
   const [submitting, setSubmitting] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedOnionIndex, setSelectedOnionIndex] = useState(-1)
   const [showOnionSkin, setShowOnionSkin] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
-  const [startFromPrev, setStartFromPrev] = useState(false)
 
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [previewIndex, setPreviewIndex] = useState(0)
-  const [previewPlaying, setPreviewPlaying] = useState(false)
+  // Draft session: array of { blob, previewUrl }
+  const [draftFrames, setDraftFrames] = useState([{ blob: null, previewUrl: null }])
+  const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
+
+  // Onion source selection: indexes into onionSources
+  const [selectedOnionIndex, setSelectedOnionIndex] = useState(-1)
+
   const { frames: previewFrames } = useFrames(flipbookId)
 
-  const onionFrameUrl = previewFrames[selectedOnionIndex]?.url ?? null
-  const onionFrameUrlRef = useRef(null)
-  onionFrameUrlRef.current = onionFrameUrl
-
-  // Auto-pick last frame as default when frames first load
+  // Revoke all blob URLs on unmount
   useEffect(() => {
-    if (previewFrames.length > 0 && selectedOnionIndex === -1) {
-      setSelectedOnionIndex(previewFrames.length - 1)
+    return () => {
+      createdUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
     }
-  }, [previewFrames.length, selectedOnionIndex])
+  }, [])
 
+  // Combined onion sources: published frames + saved previous drafts
+  // We compute this fresh every render from current state
+  const onionSources = [
+    ...previewFrames.map((f) => ({ url: getProxyUrl(f.url), id: f.id })),
+    ...draftFrames
+      .slice(0, currentDraftIndex)
+      .filter((d) => d.previewUrl)
+      .map((d) => ({ url: d.previewUrl, id: d.previewUrl })),
+  ]
+
+  const onionFrameUrl =
+    selectedOnionIndex >= 0 && selectedOnionIndex < onionSources.length
+      ? onionSources[selectedOnionIndex].url
+      : null
+
+  // Auto-select the last onion source whenever sources become available
   useEffect(() => {
-    if (previewPlaying && previewFrames.length > 1) {
-      intervalRef.current = setInterval(() => {
-        setPreviewIndex((prev) => (prev + 1) % previewFrames.length)
-      }, 1000 / 12)
-    } else {
-      clearInterval(intervalRef.current)
+    if (onionSources.length > 0 && selectedOnionIndex === -1) {
+      setSelectedOnionIndex(onionSources.length - 1)
     }
-    return () => clearInterval(intervalRef.current)
-  }, [previewPlaying, previewFrames.length])
+  }, [onionSources.length, selectedOnionIndex])
 
-  useEffect(() => {
-    if (!previewOpen) setPreviewPlaying(false)
-  }, [previewOpen])
+  // Save current canvas to its draft slot; returns the updated frames array
+  const saveCurrentDraft = async () => {
+    const blob = await canvasRef.current.getBlob()
+    const previewUrl = URL.createObjectURL(blob)
+    createdUrlsRef.current.push(previewUrl)
+    const updated = draftFrames.map((f, i) =>
+      i === currentDraftIndex ? { blob, previewUrl } : f
+    )
+    setDraftFrames(updated)
+    return { updatedFrames: updated }
+  }
 
-  useEffect(() => {
-    if (previewFrames.length > 0 && previewIndex >= previewFrames.length) {
-      setPreviewIndex(previewFrames.length - 1)
+  const computeOnionIndex = (frames, draftIndex) => {
+    const sources = [
+      ...previewFrames,
+      ...frames.slice(0, draftIndex).filter((d) => d.previewUrl),
+    ]
+    return sources.length > 0 ? sources.length - 1 : -1
+  }
+
+  const navigateToDraft = async (newIndex) => {
+    if (newIndex === currentDraftIndex) return
+    const { updatedFrames } = await saveCurrentDraft()
+    setCurrentDraftIndex(newIndex)
+    await canvasRef.current.reset(updatedFrames[newIndex]?.previewUrl ?? undefined)
+    setSelectedOnionIndex(computeOnionIndex(updatedFrames, newIndex))
+  }
+
+  const addNewDraft = async () => {
+    const { updatedFrames } = await saveCurrentDraft()
+    const newFrames = [...updatedFrames, { blob: null, previewUrl: null }]
+    const newIndex = newFrames.length - 1
+    setDraftFrames(newFrames)
+    setCurrentDraftIndex(newIndex)
+    await canvasRef.current.reset()
+    setSelectedOnionIndex(computeOnionIndex(updatedFrames, newIndex))
+  }
+
+  const deleteDraft = async (indexToDelete) => {
+    if (draftFrames.length === 1) return
+
+    const newFrames = draftFrames.filter((_, i) => i !== indexToDelete)
+    let newCurrentIndex = currentDraftIndex
+
+    if (indexToDelete === currentDraftIndex) {
+      // Deleting the active frame — navigate to adjacent slot
+      newCurrentIndex = Math.min(indexToDelete, newFrames.length - 1)
+      await canvasRef.current.reset(newFrames[newCurrentIndex]?.previewUrl ?? undefined)
+    } else if (indexToDelete < currentDraftIndex) {
+      newCurrentIndex = currentDraftIndex - 1
     }
-  }, [previewFrames.length, previewIndex])
 
-  // Stamp selected onion frame onto canvas when toggle is turned on
-  useEffect(() => {
-    if (!startFromPrev || !onionFrameUrlRef.current) return
-    canvasRef.current?.paintOnionSkin(getProxyUrl(onionFrameUrlRef.current), 1)
-      .then(() => canvasRef.current?.clearHistory())
-      .catch(() => {})
-  }, [startFromPrev])
+    setDraftFrames(newFrames)
+    setCurrentDraftIndex(newCurrentIndex)
+    setSelectedOnionIndex(computeOnionIndex(newFrames, newCurrentIndex))
+  }
 
   const handleClear = () => canvasRef.current?.clear()
   const handleUndo = () => canvasRef.current?.undo()
 
   const handlePaintOnionSkin = () => {
     if (!onionFrameUrl) return
-    canvasRef.current?.paintOnionSkin(getProxyUrl(onionFrameUrl), 1)
+    canvasRef.current?.paintOnionSkin(onionFrameUrl, 1)
   }
 
-  const handleSubmit = async () => {
+  const handleSubmitAll = async () => {
     if (!user) {
       setShowAuth(true)
       return
@@ -108,7 +155,11 @@ export default function DrawPage() {
     setError(null)
 
     try {
+      // Capture current canvas as the final version of currentDraftIndex
       const blob = await canvasRef.current.getBlob()
+      const finalDrafts = draftFrames.map((f, i) =>
+        i === currentDraftIndex ? { ...f, blob } : f
+      )
 
       let targetFlipbookId = flipbookId
       if (!targetFlipbookId) {
@@ -125,36 +176,41 @@ export default function DrawPage() {
       const framesSnap = await getDocs(
         query(collection(db, 'flipbooks', targetFlipbookId, 'frames'))
       )
-      const frameIndex = framesSnap.size
+      let frameIndex = framesSnap.size
 
-      const url = await uploadFrame(blob, targetFlipbookId, frameIndex)
-
-      await addDoc(collection(db, 'flipbooks', targetFlipbookId, 'frames'), {
-        url,
-        order: frameIndex,
-        authorUid: user.uid,
-        authorName: user.displayName,
-        authorPhoto: user.photoURL,
-        createdAt: serverTimestamp(),
-      })
+      for (const draft of finalDrafts) {
+        if (!draft.blob) continue
+        const url = await uploadFrame(draft.blob, targetFlipbookId, frameIndex)
+        await addDoc(collection(db, 'flipbooks', targetFlipbookId, 'frames'), {
+          url,
+          order: frameIndex,
+          authorUid: user.uid,
+          authorName: user.displayName,
+          authorPhoto: user.photoURL,
+          createdAt: serverTimestamp(),
+        })
+        frameIndex++
+      }
 
       navigate(`/flipbook/${targetFlipbookId}`)
     } catch (err) {
       console.error('Submit failed:', err)
-      setError('Failed to submit frame. Please try again.')
+      setError('Failed to publish frames. Please try again.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const draftCount = draftFrames.length
+
   return (
     <div className="mx-auto flex max-w-[560px] flex-col items-center gap-5 px-4 py-8">
       <div className="w-full">
         <h1 className="text-2xl font-bold text-gray-900">
-          {flipbookId ? 'Add a Frame' : 'New Flipbook'}
+          {flipbookId ? 'Add Frames' : 'New Flipbook'}
         </h1>
         {!flipbookId && (
-          <p className="mt-1 text-sm text-gray-500">Draw your first frame to get started</p>
+          <p className="mt-1 text-sm text-gray-500">Draw your frames, then publish when done</p>
         )}
       </div>
 
@@ -179,7 +235,7 @@ export default function DrawPage() {
           onClear={handleClear}
           onUndo={handleUndo}
           canUndo={canUndo}
-          hasOnionSkin={previewFrames.length > 0}
+          hasOnionSkin={onionSources.length > 0}
           showOnionSkin={showOnionSkin}
           setShowOnionSkin={setShowOnionSkin}
           onPaintOnionSkin={handlePaintOnionSkin}
@@ -191,7 +247,7 @@ export default function DrawPage() {
         style={{ width: '500px', maxWidth: '100%' }}
       >
         <div className="absolute inset-0 rounded-lg bg-white" style={{ zIndex: 0 }} />
-        <OnionSkin imageUrl={getProxyUrl(onionFrameUrl)} visible={showOnionSkin} />
+        <OnionSkin imageUrl={onionFrameUrl} visible={showOnionSkin} />
         <DrawingCanvas
           ref={canvasRef}
           tool={tool}
@@ -201,47 +257,89 @@ export default function DrawPage() {
         />
       </div>
 
-      {/* Frame picker for onion skin / stamp */}
-      {previewFrames.length > 1 && (
-        <div className="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
-          <p className="mb-2 text-xs font-medium text-gray-500">Onion frame</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {previewFrames.map((frame, i) => (
+      {/* Draft frame strip */}
+      <div className="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
+        <p className="mb-2 text-xs font-medium text-gray-500">
+          Editing frame {currentDraftIndex + 1} of {draftCount}
+        </p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {draftFrames.map((frame, i) => (
+            <div key={i} className="relative shrink-0 group">
               <button
-                key={frame.id}
-                onClick={() => setSelectedOnionIndex(i)}
-                className={`shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
-                  selectedOnionIndex === i
+                onClick={() => navigateToDraft(i)}
+                className={`overflow-hidden rounded-lg border-2 block transition-all ${
+                  currentDraftIndex === i
                     ? 'border-violet-500 ring-2 ring-violet-300'
                     : 'border-transparent hover:border-violet-300'
                 }`}
               >
-                <img
-                  src={frame.url}
-                  alt={`Frame ${i + 1}`}
-                  style={{ width: 56, height: 56 }}
-                  className="bg-white object-contain"
-                />
+                {frame.previewUrl ? (
+                  <img
+                    src={frame.previewUrl}
+                    alt={`Frame ${i + 1}`}
+                    style={{ width: 56, height: 56 }}
+                    className="bg-white object-contain"
+                  />
+                ) : (
+                  <div
+                    style={{ width: 56, height: 56 }}
+                    className="bg-gray-50"
+                  />
+                )}
+                {/* Frame number badge */}
+                <span className="absolute bottom-1 right-1 rounded bg-black/50 px-1 py-0.5 text-[10px] font-medium leading-none text-white">
+                  {i + 1}
+                </span>
               </button>
+              {/* Delete button */}
+              {draftFrames.length > 1 && (
+                <button
+                  onClick={() => deleteDraft(i)}
+                  className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addNewDraft}
+            style={{ width: 56, height: 56 }}
+            className="shrink-0 flex items-center justify-center rounded-lg border-2 border-dashed border-violet-200 text-lg text-violet-400 transition-all hover:border-violet-400 hover:text-violet-600"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {/* Onion frame picker */}
+      {onionSources.length > 1 && (
+        <div className="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
+          <p className="mb-2 text-xs font-medium text-gray-500">Onion frame</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {onionSources.map((src, i) => (
+              <div key={src.id ?? i} className="relative shrink-0">
+                <button
+                  onClick={() => setSelectedOnionIndex(i)}
+                  className={`overflow-hidden rounded-lg border-2 block transition-all ${
+                    selectedOnionIndex === i
+                      ? 'border-violet-500 ring-2 ring-violet-300'
+                      : 'border-transparent hover:border-violet-300'
+                  }`}
+                >
+                  <img
+                    src={src.url}
+                    alt={`Onion source ${i + 1}`}
+                    style={{ width: 56, height: 56 }}
+                    className="bg-white object-contain"
+                  />
+                </button>
+                <span className="absolute bottom-1 right-1 rounded bg-black/50 px-1 py-0.5 text-[10px] font-medium leading-none text-white">
+                  {i + 1}
+                </span>
+              </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Start from previous frame toggle */}
-      {previewFrames.length > 0 && (
-        <div className="flex w-full items-center justify-between rounded-xl border border-violet-100 bg-white px-4 py-2.5 shadow-sm">
-          <span className="text-sm text-gray-600">Start from previous frame</span>
-          <button
-            onClick={() => setStartFromPrev((v) => !v)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-              startFromPrev
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'bg-gray-50 text-gray-600 hover:bg-violet-50 hover:text-violet-700'
-            }`}
-          >
-            {startFromPrev ? 'On' : 'Off'}
-          </button>
         </div>
       )}
 
@@ -252,46 +350,14 @@ export default function DrawPage() {
       )}
 
       <button
-        onClick={handleSubmit}
+        onClick={handleSubmitAll}
         disabled={submitting}
         className="w-full rounded-xl bg-violet-600 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700 disabled:opacity-50"
       >
-        {submitting ? 'Submitting...' : 'Submit Frame'}
+        {submitting
+          ? 'Publishing...'
+          : `Publish ${draftCount} frame${draftCount !== 1 ? 's' : ''}`}
       </button>
-
-      {flipbookId && previewFrames.length > 0 && (
-        <div className="w-full">
-          <button
-            onClick={() => setPreviewOpen((v) => !v)}
-            className="flex w-full items-center justify-between rounded-xl border border-violet-100 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-violet-50"
-          >
-            <span>Preview ({previewFrames.length} frame{previewFrames.length !== 1 ? 's' : ''})</span>
-            <span className="text-gray-400">{previewOpen ? '▲' : '▼'}</span>
-          </button>
-
-          {previewOpen && (
-            <div className="mt-2 flex flex-col items-center gap-3 rounded-xl border border-violet-100 bg-white p-4 shadow-sm">
-              <img
-                src={previewFrames[previewIndex]?.url}
-                alt={`Preview frame ${previewIndex + 1}`}
-                style={{ width: '160px', height: '160px' }}
-                className="rounded-lg border border-violet-100 bg-white object-contain shadow-sm"
-              />
-              <button
-                onClick={() => setPreviewPlaying((p) => !p)}
-                className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700"
-              >
-                {previewPlaying ? 'Pause' : 'Play'}
-              </button>
-              <FrameStrip
-                frames={previewFrames}
-                currentIndex={previewIndex}
-                onSelect={(i) => { setPreviewPlaying(false); setPreviewIndex(i) }}
-              />
-            </div>
-          )}
-        </div>
-      )}
 
       <AuthModal open={showAuth} onClose={() => setShowAuth(false)} />
     </div>
