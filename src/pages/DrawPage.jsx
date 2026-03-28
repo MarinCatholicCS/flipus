@@ -9,7 +9,6 @@ import {
   doc,
   setDoc,
   orderBy,
-  limit,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -41,7 +40,7 @@ export default function DrawPage() {
   const [submitting, setSubmitting] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [error, setError] = useState(null)
-  const [lastFrameUrl, setLastFrameUrl] = useState(null)
+  const [selectedOnionIndex, setSelectedOnionIndex] = useState(-1)
   const [showOnionSkin, setShowOnionSkin] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
   const [startFromPrev, setStartFromPrev] = useState(false)
@@ -51,18 +50,16 @@ export default function DrawPage() {
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const { frames: previewFrames } = useFrames(flipbookId)
 
+  const onionFrameUrl = previewFrames[selectedOnionIndex]?.url ?? null
+  const onionFrameUrlRef = useRef(null)
+  onionFrameUrlRef.current = onionFrameUrl
+
+  // Auto-pick last frame as default when frames first load
   useEffect(() => {
-    if (!flipbookId) return
-    getDocs(
-      query(
-        collection(db, 'flipbooks', flipbookId, 'frames'),
-        orderBy('order', 'desc'),
-        limit(1)
-      )
-    ).then((snap) => {
-      if (!snap.empty) setLastFrameUrl(snap.docs[0].data().url)
-    })
-  }, [flipbookId])
+    if (previewFrames.length > 0 && selectedOnionIndex === -1) {
+      setSelectedOnionIndex(previewFrames.length - 1)
+    }
+  }, [previewFrames.length, selectedOnionIndex])
 
   useEffect(() => {
     if (previewPlaying && previewFrames.length > 1) {
@@ -85,20 +82,20 @@ export default function DrawPage() {
     }
   }, [previewFrames.length, previewIndex])
 
-  // Stamp previous frame onto canvas when toggle is turned on
+  // Stamp selected onion frame onto canvas when toggle is turned on
   useEffect(() => {
-    if (!startFromPrev || !lastFrameUrl) return
-    canvasRef.current?.paintOnionSkin(getProxyUrl(lastFrameUrl), 1)
+    if (!startFromPrev || !onionFrameUrlRef.current) return
+    canvasRef.current?.paintOnionSkin(getProxyUrl(onionFrameUrlRef.current), 1)
       .then(() => canvasRef.current?.clearHistory())
       .catch(() => {})
-  }, [startFromPrev, lastFrameUrl])
+  }, [startFromPrev])
 
   const handleClear = () => canvasRef.current?.clear()
   const handleUndo = () => canvasRef.current?.undo()
 
   const handlePaintOnionSkin = () => {
-    if (!lastFrameUrl) return
-    canvasRef.current?.paintOnionSkin(getProxyUrl(lastFrameUrl), 1)
+    if (!onionFrameUrl) return
+    canvasRef.current?.paintOnionSkin(getProxyUrl(onionFrameUrl), 1)
   }
 
   const handleSubmit = async () => {
@@ -182,7 +179,7 @@ export default function DrawPage() {
           onClear={handleClear}
           onUndo={handleUndo}
           canUndo={canUndo}
-          hasOnionSkin={!!lastFrameUrl}
+          hasOnionSkin={previewFrames.length > 0}
           showOnionSkin={showOnionSkin}
           setShowOnionSkin={setShowOnionSkin}
           onPaintOnionSkin={handlePaintOnionSkin}
@@ -194,7 +191,7 @@ export default function DrawPage() {
         style={{ width: '500px', maxWidth: '100%' }}
       >
         <div className="absolute inset-0 rounded-lg bg-white" style={{ zIndex: 0 }} />
-        <OnionSkin imageUrl={getProxyUrl(lastFrameUrl)} visible={showOnionSkin} />
+        <OnionSkin imageUrl={getProxyUrl(onionFrameUrl)} visible={showOnionSkin} />
         <DrawingCanvas
           ref={canvasRef}
           tool={tool}
@@ -204,8 +201,35 @@ export default function DrawPage() {
         />
       </div>
 
+      {/* Frame picker for onion skin / stamp */}
+      {previewFrames.length > 1 && (
+        <div className="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
+          <p className="mb-2 text-xs font-medium text-gray-500">Onion frame</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {previewFrames.map((frame, i) => (
+              <button
+                key={frame.id}
+                onClick={() => setSelectedOnionIndex(i)}
+                className={`shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
+                  selectedOnionIndex === i
+                    ? 'border-violet-500 ring-2 ring-violet-300'
+                    : 'border-transparent hover:border-violet-300'
+                }`}
+              >
+                <img
+                  src={frame.url}
+                  alt={`Frame ${i + 1}`}
+                  style={{ width: 56, height: 56 }}
+                  className="bg-white object-contain"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Start from previous frame toggle */}
-      {lastFrameUrl && (
+      {previewFrames.length > 0 && (
         <div className="flex w-full items-center justify-between rounded-xl border border-violet-100 bg-white px-4 py-2.5 shadow-sm">
           <span className="text-sm text-gray-600">Start from previous frame</span>
           <button
