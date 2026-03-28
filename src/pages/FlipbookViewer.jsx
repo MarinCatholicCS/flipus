@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { doc, updateDoc, deleteDoc, collection } from 'firebase/firestore'
+import { doc, updateDoc, deleteDoc, setDoc, collection, onSnapshot, increment, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import { useFlipbook } from '../hooks/useFlipbook'
@@ -17,6 +17,14 @@ export default function FlipbookViewer() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [savingTitle, setSavingTitle] = useState(false)
+  const [liked, setLiked] = useState(false)
+
+  useEffect(() => {
+    if (!id || !user) return
+    return onSnapshot(collection(db, 'flipbooks', id, 'likes'), (snap) => {
+      setLiked(snap.docs.some((d) => d.id === user.uid))
+    })
+  }, [id, user])
 
   if (loadingFlipbook || loadingFrames) {
     return (
@@ -35,6 +43,23 @@ export default function FlipbookViewer() {
   }
 
   const isOwner = user && user.uid === flipbook.createdBy
+
+  const handleLike = async () => {
+    if (!user) return
+    const likeRef = doc(db, 'flipbooks', id, 'likes', user.uid)
+    const flipbookRef = doc(db, 'flipbooks', id)
+    if (liked) {
+      await deleteDoc(likeRef)
+      await updateDoc(flipbookRef, { likeCount: increment(-1) })
+    } else {
+      await setDoc(likeRef, { likedAt: serverTimestamp() })
+      await updateDoc(flipbookRef, { likeCount: increment(1) })
+    }
+  }
+
+  const handleSetThumbnail = async (index) => {
+    await updateDoc(doc(db, 'flipbooks', id), { thumbnailIndex: index })
+  }
 
   const handleDeleteFrame = async (frame, index) => {
     if (!confirm(`Delete frame ${index + 1}?`)) return
@@ -111,12 +136,27 @@ export default function FlipbookViewer() {
             )}
           </div>
         )}
-        <Link
-          to={`/draw/${id}`}
-          className="shrink-0 rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700"
-        >
-          + Add Frame
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={handleLike}
+            disabled={!user}
+            title={user ? (liked ? 'Unlike' : 'Like') : 'Sign in to like'}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+              liked
+                ? 'border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-rose-200 hover:text-rose-400'
+            } disabled:opacity-40`}
+          >
+            <span>{liked ? '♥' : '♡'}</span>
+            <span>{flipbook.likeCount ?? 0}</span>
+          </button>
+          <Link
+            to={`/draw/${id}`}
+            className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700"
+          >
+            + Add Frame
+          </Link>
+        </div>
       </div>
       <FlipbookPlayer frames={frames} currentIndex={currentIndex} onSelect={setCurrentIndex} />
       <div className="w-full rounded-xl border border-violet-100 bg-white shadow-sm">
@@ -126,6 +166,8 @@ export default function FlipbookViewer() {
           onSelect={setCurrentIndex}
           isOwner={isOwner}
           onDeleteFrame={handleDeleteFrame}
+          thumbnailIndex={flipbook.thumbnailIndex ?? 0}
+          onSetThumbnail={handleSetThumbnail}
         />
       </div>
     </div>

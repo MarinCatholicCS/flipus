@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { db } from '../lib/firebase'
+import { useAuth } from '../hooks/useAuth'
 import FlipbookCard from '../components/feed/FlipbookCard'
 
 export default function Feed() {
+  const { user } = useAuth()
   const [flipbooks, setFlipbooks] = useState([])
+  const [likedIds, setLikedIds] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -16,6 +19,17 @@ export default function Feed() {
     })
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    if (!user || flipbooks.length === 0) { setLikedIds(new Set()); return }
+    Promise.all(
+      flipbooks.map((fb) => getDoc(doc(db, 'flipbooks', fb.id, 'likes', user.uid)))
+    ).then((snaps) => {
+      const ids = new Set()
+      snaps.forEach((s, i) => { if (s.exists()) ids.add(flipbooks[i].id) })
+      setLikedIds(ids)
+    })
+  }, [flipbooks, user])
 
   if (loading) {
     return (
@@ -47,7 +61,7 @@ export default function Feed() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {flipbooks.map((fb) => (
             <Link key={fb.id} to={`/flipbook/${fb.id}`}>
-              <FlipbookCard flipbook={fb} />
+              <FlipbookCard flipbook={fb} liked={likedIds.has(fb.id)} />
             </Link>
           ))}
         </div>

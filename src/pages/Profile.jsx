@@ -5,8 +5,8 @@ import {
   collectionGroup,
   query,
   where,
-  onSnapshot,
   getDocs,
+  onSnapshot,
   writeBatch,
   doc,
 } from 'firebase/firestore'
@@ -18,8 +18,7 @@ export default function Profile() {
   const { uid } = useParams()
   const { user } = useAuth()
   const [flipbooks, setFlipbooks] = useState([])
-  const [frameCount, setFrameCount] = useState(0)
-  const [profileName, setProfileName] = useState(null)
+const [profileName, setProfileName] = useState(null)
   const [profilePhoto, setProfilePhoto] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -38,17 +37,15 @@ export default function Profile() {
   }, [uid])
 
   useEffect(() => {
-    if (!uid) return
+    if (!uid || isOwnProfile) return
     const q = query(collectionGroup(db, 'frames'), where('authorUid', '==', uid))
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setFrameCount(snap.size)
-      if (snap.size > 0 && !isOwnProfile) {
+    getDocs(q).then((snap) => {
+      if (snap.size > 0) {
         const data = snap.docs[0].data()
         setProfileName(data.authorName ?? null)
         setProfilePhoto(data.authorPhoto ?? null)
       }
     })
-    return unsubscribe
   }, [uid, isOwnProfile])
 
   const displayName = isOwnProfile ? user.displayName : profileName
@@ -87,11 +84,6 @@ export default function Profile() {
             <span>
               <span className="font-semibold text-gray-700">{flipbooks.length}</span>{' '}
               flipbook{flipbooks.length !== 1 ? 's' : ''}
-            </span>
-            <span className="text-gray-300">·</span>
-            <span>
-              <span className="font-semibold text-gray-700">{frameCount}</span>{' '}
-              frame{frameCount !== 1 ? 's' : ''} contributed
             </span>
           </div>
         </div>

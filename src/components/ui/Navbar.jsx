@@ -12,10 +12,16 @@ export default function Navbar() {
   return (
     <>
       <nav className="flex items-center justify-between border-b border-violet-100 bg-white px-6 py-3 shadow-sm">
-        <Link to="/" className="text-xl font-bold tracking-tight text-violet-700">
-          Flipus
+        <Link to="/" className="flex items-center gap-2">
+          <img src="/flipus.png" alt="Flipus" className="h-8 w-auto" />
         </Link>
         <div className="flex items-center gap-4">
+          <Link
+            to="/"
+            className="text-sm font-medium text-gray-600 transition-colors hover:text-violet-700"
+          >
+            Feed
+          </Link>
           <Link
             to="/draw"
             className="text-sm font-medium text-gray-600 transition-colors hover:text-violet-700"

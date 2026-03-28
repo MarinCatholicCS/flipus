@@ -1,4 +1,4 @@
-export default function FrameStrip({ frames = [], currentIndex = 0, onSelect, isOwner, onDeleteFrame }) {
+export default function FrameStrip({ frames = [], currentIndex = 0, onSelect, isOwner, onDeleteFrame, thumbnailIndex = 0, onSetThumbnail }) {
   return (
     <div className="flex gap-2 overflow-x-auto p-2">
       {frames.map((frame, i) => (
@@ -17,6 +17,14 @@ export default function FrameStrip({ frames = [], currentIndex = 0, onSelect, is
               className="h-16 w-16 rounded-md object-contain bg-white"
             />
           </button>
+          {i === thumbnailIndex && (
+            <span
+              className="absolute -left-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[9px] font-bold text-white"
+              title="Current thumbnail"
+            >
+              ★
+            </span>
+          )}
           {isOwner && (
             <button
               onClick={() => onDeleteFrame(frame, i)}
@@ -38,6 +46,15 @@ export default function FrameStrip({ frames = [], currentIndex = 0, onSelect, is
               {frame.authorName || 'Anonymous'}
             </span>
           </div>
+          {isOwner && i !== thumbnailIndex && (
+            <button
+              onClick={() => onSetThumbnail(i)}
+              title="Set as thumbnail"
+              className="mt-0.5 text-[9px] text-violet-400 hover:text-violet-700 transition-colors"
+            >
+              Set cover
+            </button>
+          )}
         </div>
       ))}
     </div>

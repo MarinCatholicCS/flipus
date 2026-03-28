@@ -4,10 +4,20 @@ service cloud.firestore {
     match /flipbooks/{flipbookId} {
       allow read: if true;
       allow create: if request.auth != null;
-      // Only the owner can update, and only the title field
-      allow update: if request.auth != null
-        && request.auth.uid == resource.data.createdBy
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title']);
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.createdBy;
+      // Only the owner can update title/thumbnailIndex; any auth user can update likeCount
+      allow update: if (request.auth != null
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'thumbnailIndex']))
+        || (request.auth != null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount']));
+
+      match /likes/{userId} {
+        allow read: if true;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
 
       match /frames/{frameId} {
         allow read: if true;
