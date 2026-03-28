@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, query, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -31,6 +31,26 @@ export default function Feed() {
     })
   }, [flipbooks, user])
 
+  const handleLike = async (e, fb) => {
+    e.preventDefault()
+    if (!user) return
+    const isLiked = likedIds.has(fb.id)
+    setLikedIds((prev) => {
+      const next = new Set(prev)
+      isLiked ? next.delete(fb.id) : next.add(fb.id)
+      return next
+    })
+    const likeRef = doc(db, 'flipbooks', fb.id, 'likes', user.uid)
+    const flipbookRef = doc(db, 'flipbooks', fb.id)
+    if (isLiked) {
+      await deleteDoc(likeRef)
+      await updateDoc(flipbookRef, { likeCount: increment(-1) })
+    } else {
+      await setDoc(likeRef, { likedAt: serverTimestamp() })
+      await updateDoc(flipbookRef, { likeCount: increment(1) })
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-16 text-gray-400">
@@ -61,7 +81,7 @@ export default function Feed() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {flipbooks.map((fb) => (
             <Link key={fb.id} to={`/flipbook/${fb.id}`}>
-              <FlipbookCard flipbook={fb} liked={likedIds.has(fb.id)} />
+              <FlipbookCard flipbook={fb} liked={likedIds.has(fb.id)} onLike={(e) => handleLike(e, fb)} />
             </Link>
           ))}
         </div>

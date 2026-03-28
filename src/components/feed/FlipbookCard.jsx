@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export default function FlipbookCard({ flipbook, liked = false }) {
+export default function FlipbookCard({ flipbook, liked = false, onLike }) {
   const [imgError, setImgError] = useState(false)
   const resolvedIndex = flipbook.thumbnailIndex ?? 0
   const thumbnailUrl = `/api/proxy-frame?key=frames/${flipbook.id}/${resolvedIndex}.png`
@@ -25,10 +25,13 @@ export default function FlipbookCard({ flipbook, liked = false }) {
         <h3 className="font-semibold text-gray-900">{flipbook?.title || 'Untitled'}</h3>
         <div className="mt-1 flex items-center justify-between">
           <p className="text-xs text-gray-400">by {flipbook?.createdBy ? 'a creator' : 'Anonymous'}</p>
-          <span className={`flex items-center gap-1 text-xs ${liked ? 'text-rose-500' : 'text-gray-400'}`}>
+          <button
+            onClick={onLike}
+            className={`flex items-center gap-1 text-xs transition-colors ${liked ? 'text-rose-500' : 'text-gray-400 hover:text-rose-400'}`}
+          >
             <span>{liked ? '♥' : '♡'}</span>
             <span>{flipbook?.likeCount ?? 0}</span>
-          </span>
+          </button>
         </div>
       </div>
     </div>
