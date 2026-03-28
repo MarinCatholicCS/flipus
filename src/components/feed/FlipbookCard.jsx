@@ -24,7 +24,7 @@ export default function FlipbookCard({ flipbook, liked = false, onLike }) {
       <div className="p-4">
         <h3 className="font-semibold text-gray-900">{flipbook?.title || 'Untitled'}</h3>
         <div className="mt-1 flex items-center justify-between">
-          <p className="text-xs text-gray-400">by {flipbook?.createdBy ? 'a creator' : 'Anonymous'}</p>
+          <p className="text-xs text-gray-400">by {flipbook?.createdByName || 'Anonymous'}</p>
           <button
             onClick={onLike}
             className={`flex items-center gap-1 text-xs transition-colors ${liked ? 'text-rose-500' : 'text-gray-400 hover:text-rose-400'}`}

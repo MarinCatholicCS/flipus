@@ -118,6 +118,7 @@ export default function DrawPage() {
         const flipbookRef = doc(collection(db, 'flipbooks'))
         await setDoc(flipbookRef, {
           createdBy: user.uid,
+          createdByName: user.displayName || 'Anonymous',
           createdAt: serverTimestamp(),
           title: title.trim() || 'Untitled Flipbook',
         })
