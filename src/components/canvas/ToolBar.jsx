@@ -4,7 +4,7 @@ const TOOLS = [
   { id: 'fill', label: 'Fill' },
 ]
 
-export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear, onUndo, canUndo, showOnionSkin, setShowOnionSkin, hasOnionSkin, onPaintOnionSkin }) {
+export default function ToolBar({ tool, setTool, color, setColor, strokeSize, setStrokeSize, onClear, onUndo, canUndo, showOnionSkin, setShowOnionSkin, hasOnionSkin, onPaintOnionSkin, onResetOnionOffset }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
       {/* Tool buttons */}
@@ -88,6 +88,30 @@ export default function ToolBar({ tool, setTool, color, setColor, strokeSize, se
           >
             Onion
           </button>
+          {showOnionSkin && (
+            <>
+              <button
+                onClick={() => setTool('onionMove')}
+                title="Drag onion skin to offset it"
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                  tool === 'onionMove'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'bg-gray-50 text-gray-600 hover:bg-violet-50 hover:text-violet-700'
+                }`}
+              >
+                Move
+              </button>
+              {onResetOnionOffset && (
+                <button
+                  onClick={onResetOnionOffset}
+                  title="Reset onion skin position"
+                  className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50 transition-all"
+                >
+                  Reset
+                </button>
+              )}
+            </>
+          )}
           <button
             onClick={onPaintOnionSkin}
             title="Stamp previous frame onto canvas"

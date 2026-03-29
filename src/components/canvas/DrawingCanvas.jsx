@@ -34,15 +34,20 @@ const DrawingCanvas = forwardRef(function DrawingCanvas({ tool, color, strokeSiz
       const ctx = canvasRef.current.getContext('2d')
       ctx.clearRect(0, 0, 500, 500)
     },
-    paintOnionSkin: (imageUrl, opacity = 0.3) =>
+    paintOnionSkin: (imageUrl, opacity = 0.3, offset = { x: 0, y: 0 }) =>
       new Promise((resolve, reject) => {
         saveSnapshot()
         const img = new Image()
         img.onload = () => {
           const ctx = canvasRef.current.getContext('2d')
+          const rect = canvasRef.current.getBoundingClientRect()
+          const scaleX = rect.width > 0 ? 500 / rect.width : 1
+          const scaleY = rect.height > 0 ? 500 / rect.height : 1
+          const dx = (offset.x || 0) * scaleX
+          const dy = (offset.y || 0) * scaleY
           ctx.save()
           ctx.globalAlpha = opacity
-          ctx.drawImage(img, 0, 0, 500, 500)
+          ctx.drawImage(img, dx, dy, 500, 500)
           ctx.restore()
           resolve()
         }

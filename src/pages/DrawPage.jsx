@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection,
@@ -41,13 +41,15 @@ export default function DrawPage() {
   const [error, setError] = useState(null)
   const [showOnionSkin, setShowOnionSkin] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
+  const [onionOffset, setOnionOffset] = useState({ x: 0, y: 0 })
+  const onionDragStart = useRef(null)
 
   // Draft session: array of { blob, previewUrl }
   const [draftFrames, setDraftFrames] = useState([{ blob: null, previewUrl: null }])
   const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
 
-  // Onion source selection: indexes into onionSources
-  const [selectedOnionIndex, setSelectedOnionIndex] = useState(-1)
+  // Onion source selection: tracked by frame id (stable across re-renders/Firestore pushes)
+  const [selectedOnionId, setSelectedOnionId] = useState(null)
 
   const { frames: previewFrames } = useFrames(flipbookId)
 
@@ -68,17 +70,22 @@ export default function DrawPage() {
       .map((d) => ({ url: d.previewUrl, id: d.previewUrl })),
   ]
 
-  const onionFrameUrl =
-    selectedOnionIndex >= 0 && selectedOnionIndex < onionSources.length
-      ? onionSources[selectedOnionIndex].url
-      : null
+  // Derive selected index from id — immune to index shifts from Firestore pushes
+  const selectedOnionIndex = selectedOnionId
+    ? onionSources.findIndex((s) => s.id === selectedOnionId)
+    : -1
 
-  // Auto-select the last onion source whenever sources become available
+  const onionFrameUrl =
+    selectedOnionIndex >= 0 ? onionSources[selectedOnionIndex].url : null
+
+  // Auto-select the last onion source whenever sources become available or selection becomes invalid
   useEffect(() => {
     if (onionSources.length > 0 && selectedOnionIndex === -1) {
-      setSelectedOnionIndex(onionSources.length - 1)
+      setSelectedOnionId(onionSources[onionSources.length - 1].id)
+    } else if (onionSources.length === 0 && selectedOnionId !== null) {
+      setSelectedOnionId(null)
     }
-  }, [onionSources.length, selectedOnionIndex])
+  }, [onionSources.length, selectedOnionIndex, selectedOnionId])
 
   // Save current canvas to its draft slot; returns the updated frames array
   const saveCurrentDraft = async () => {
@@ -92,12 +99,18 @@ export default function DrawPage() {
     return { updatedFrames: updated }
   }
 
-  const computeOnionIndex = (frames, draftIndex) => {
-    const sources = [
-      ...previewFrames,
-      ...frames.slice(0, draftIndex).filter((d) => d.previewUrl),
-    ]
-    return sources.length > 0 ? sources.length - 1 : -1
+  // Resets the onion selection to the last available source given a frames snapshot and current index.
+  // Uses id-based tracking so it stays correct even if previewFrames shifts.
+  const resetOnionToLast = (frames, draftIndex) => {
+    // Draft frames that precede current index
+    const precedingDrafts = frames.slice(0, draftIndex).filter((d) => d.previewUrl)
+    if (precedingDrafts.length > 0) {
+      setSelectedOnionId(precedingDrafts[precedingDrafts.length - 1].previewUrl)
+    } else if (previewFrames.length > 0) {
+      setSelectedOnionId(previewFrames[previewFrames.length - 1].id)
+    } else {
+      setSelectedOnionId(null)
+    }
   }
 
   const navigateToDraft = async (newIndex) => {
@@ -105,7 +118,9 @@ export default function DrawPage() {
     const { updatedFrames } = await saveCurrentDraft()
     setCurrentDraftIndex(newIndex)
     await canvasRef.current.reset(updatedFrames[newIndex]?.previewUrl ?? undefined)
-    setSelectedOnionIndex(computeOnionIndex(updatedFrames, newIndex))
+    resetOnionToLast(updatedFrames, newIndex)
+    setOnionOffset({ x: 0, y: 0 })
+    if (tool === 'onionMove') setTool('pen')
   }
 
   const addNewDraft = async () => {
@@ -115,7 +130,7 @@ export default function DrawPage() {
     setDraftFrames(newFrames)
     setCurrentDraftIndex(newIndex)
     await canvasRef.current.reset()
-    setSelectedOnionIndex(computeOnionIndex(updatedFrames, newIndex))
+    resetOnionToLast(updatedFrames, newIndex)
   }
 
   const deleteDraft = async (indexToDelete) => {
@@ -134,7 +149,7 @@ export default function DrawPage() {
 
     setDraftFrames(newFrames)
     setCurrentDraftIndex(newCurrentIndex)
-    setSelectedOnionIndex(computeOnionIndex(newFrames, newCurrentIndex))
+    resetOnionToLast(newFrames, newCurrentIndex)
   }
 
   const handleClear = () => canvasRef.current?.clear()
@@ -142,8 +157,30 @@ export default function DrawPage() {
 
   const handlePaintOnionSkin = () => {
     if (!onionFrameUrl) return
-    canvasRef.current?.paintOnionSkin(onionFrameUrl, 1)
+    canvasRef.current?.paintOnionSkin(onionFrameUrl, 1, onionOffset)
   }
+
+  const handleOnionDragStart = useCallback((e) => {
+    e.preventDefault()
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    onionDragStart.current = { clientX, clientY, offsetX: onionOffset.x, offsetY: onionOffset.y }
+  }, [onionOffset])
+
+  const handleOnionDragMove = useCallback((e) => {
+    if (!onionDragStart.current) return
+    e.preventDefault()
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    setOnionOffset({
+      x: onionDragStart.current.offsetX + (clientX - onionDragStart.current.clientX),
+      y: onionDragStart.current.offsetY + (clientY - onionDragStart.current.clientY),
+    })
+  }, [])
+
+  const handleOnionDragEnd = useCallback(() => {
+    onionDragStart.current = null
+  }, [])
 
   const handleSubmitAll = async () => {
     if (!user) {
@@ -239,6 +276,7 @@ export default function DrawPage() {
           showOnionSkin={showOnionSkin}
           setShowOnionSkin={setShowOnionSkin}
           onPaintOnionSkin={handlePaintOnionSkin}
+          onResetOnionOffset={() => setOnionOffset({ x: 0, y: 0 })}
         />
       </div>
 
@@ -247,7 +285,19 @@ export default function DrawPage() {
         style={{ width: '500px', maxWidth: '100%' }}
       >
         <div className="absolute inset-0 rounded-lg bg-white" style={{ zIndex: 0 }} />
-        <OnionSkin imageUrl={onionFrameUrl} visible={showOnionSkin} />
+        <OnionSkin imageUrl={onionFrameUrl} visible={showOnionSkin} offset={onionOffset} />
+        {tool === 'onionMove' && showOnionSkin && onionFrameUrl && (
+          <div
+            style={{ position: 'absolute', inset: 0, zIndex: 3, cursor: 'grab' }}
+            onMouseDown={handleOnionDragStart}
+            onMouseMove={handleOnionDragMove}
+            onMouseUp={handleOnionDragEnd}
+            onMouseLeave={handleOnionDragEnd}
+            onTouchStart={handleOnionDragStart}
+            onTouchMove={handleOnionDragMove}
+            onTouchEnd={handleOnionDragEnd}
+          />
+        )}
         <DrawingCanvas
           ref={canvasRef}
           tool={tool}
@@ -320,9 +370,9 @@ export default function DrawPage() {
             {onionSources.map((src, i) => (
               <div key={src.id ?? i} className="relative shrink-0">
                 <button
-                  onClick={() => setSelectedOnionIndex(i)}
+                  onClick={() => setSelectedOnionId(src.id)}
                   className={`overflow-hidden rounded-lg border-2 block transition-all ${
-                    selectedOnionIndex === i
+                    selectedOnionId === src.id
                       ? 'border-violet-500 ring-2 ring-violet-300'
                       : 'border-transparent hover:border-violet-300'
                   }`}
