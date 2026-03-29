@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { verifyAuth } from './_verifyAuth.js'
 
 const R2 = new S3Client({
   region: 'auto',
@@ -18,7 +19,18 @@ export default async function handler(req, res) {
   }
 
   try {
+    await verifyAuth(req)
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  try {
     const { flipbookId, frameIndex, imageBase64 } = req.body
+
+    if (!imageBase64 || imageBase64.length > 2_000_000) {
+      return res.status(400).json({ error: 'Payload too large (max ~1.5 MB)' })
+    }
+
     const buffer = Buffer.from(imageBase64, 'base64')
     const key = `frames/${flipbookId}/${frameIndex}.png`
 

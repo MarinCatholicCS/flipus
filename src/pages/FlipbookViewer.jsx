@@ -69,7 +69,10 @@ export default function FlipbookViewer() {
     // Best-effort R2 cleanup
     try {
       const key = new URL(frame.url).pathname.slice(1)
-      if (key) deleteFrames([key])
+      if (key) {
+        const token = await user.getIdToken()
+        deleteFrames([key], token)
+      }
     } catch { /* ignore malformed URLs */ }
   }
 

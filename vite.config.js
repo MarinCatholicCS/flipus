@@ -20,6 +20,13 @@ function apiDevPlugin(env) {
           try {
             const { flipbookId, frameIndex, imageBase64 } = JSON.parse(body)
 
+            if (!imageBase64 || imageBase64.length > 2_000_000) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Payload too large (max ~1.5 MB)' }))
+              return
+            }
+
             const R2 = new S3Client({
               region: 'auto',
               endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,

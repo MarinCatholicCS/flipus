@@ -1,4 +1,5 @@
 import { S3Client, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { verifyAuth } from './_verifyAuth.js'
 
 const R2 = new S3Client({
   region: 'auto',
@@ -14,6 +15,12 @@ const BUCKET = process.env.R2_BUCKET_NAME
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  try {
+    await verifyAuth(req)
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' })
   }
 
   try {

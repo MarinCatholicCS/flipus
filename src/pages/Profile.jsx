@@ -69,7 +69,10 @@ const [profileName, setProfileName] = useState(null)
     batch.delete(doc(db, 'flipbooks', flipbookId))
     await batch.commit()
     // Best-effort R2 cleanup
-    if (keys.length > 0) deleteFrames(keys)
+    if (keys.length > 0) {
+      const token = await user.getIdToken()
+      deleteFrames(keys, token)
+    }
   }
 
   return (

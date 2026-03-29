@@ -217,6 +217,8 @@ export default function DrawPage() {
         targetFlipbookId = flipbookRef.id
       }
 
+      const token = await user.getIdToken()
+
       const framesSnap = await getDocs(
         query(collection(db, 'flipbooks', targetFlipbookId, 'frames'))
       )
@@ -224,7 +226,7 @@ export default function DrawPage() {
 
       for (const draft of finalDrafts) {
         if (!draft.blob) continue
-        const url = await uploadFrame(draft.blob, targetFlipbookId, frameIndex)
+        const url = await uploadFrame(draft.blob, targetFlipbookId, frameIndex, token)
         await addDoc(collection(db, 'flipbooks', targetFlipbookId, 'frames'), {
           url,
           order: frameIndex,
