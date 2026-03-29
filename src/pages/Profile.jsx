@@ -13,6 +13,7 @@ import {
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import FlipbookCard from '../components/feed/FlipbookCard'
+import { deleteFrames } from '../lib/deleteFrames'
 
 export default function Profile() {
   const { uid } = useParams()
@@ -57,10 +58,18 @@ const [profileName, setProfileName] = useState(null)
   const handleDeleteFlipbook = async (flipbookId) => {
     if (!confirm('Delete this flipbook and all its frames?')) return
     const framesSnap = await getDocs(collection(db, 'flipbooks', flipbookId, 'frames'))
+    // Collect R2 keys before deleting from Firestore
+    const keys = framesSnap.docs
+      .map((d) => d.data().url)
+      .filter(Boolean)
+      .map((url) => { try { return new URL(url).pathname.slice(1) } catch { return null } })
+      .filter(Boolean)
     const batch = writeBatch(db)
     framesSnap.docs.forEach((d) => batch.delete(d.ref))
     batch.delete(doc(db, 'flipbooks', flipbookId))
     await batch.commit()
+    // Best-effort R2 cleanup
+    if (keys.length > 0) deleteFrames(keys)
   }
 
   return (

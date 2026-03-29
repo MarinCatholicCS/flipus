@@ -7,6 +7,7 @@ import { useFlipbook } from '../hooks/useFlipbook'
 import { useFrames } from '../hooks/useFrames'
 import FlipbookPlayer from '../components/player/FlipbookPlayer'
 import FrameStrip from '../components/player/FrameStrip'
+import { deleteFrames } from '../lib/deleteFrames'
 
 export default function FlipbookViewer() {
   const { id } = useParams()
@@ -65,6 +66,11 @@ export default function FlipbookViewer() {
     if (!confirm(`Delete frame ${index + 1}?`)) return
     await deleteDoc(doc(collection(db, 'flipbooks', id, 'frames'), frame.id))
     if (currentIndex >= frames.length - 1) setCurrentIndex(Math.max(0, frames.length - 2))
+    // Best-effort R2 cleanup
+    try {
+      const key = new URL(frame.url).pathname.slice(1)
+      if (key) deleteFrames([key])
+    } catch { /* ignore malformed URLs */ }
   }
 
   const startEditing = () => {

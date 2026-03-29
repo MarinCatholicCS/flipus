@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 
 function apiDevPlugin(env) {
   return {
@@ -98,10 +98,74 @@ function proxyFramePlugin(env) {
   }
 }
 
+function deleteFramePlugin(env) {
+  return {
+    name: 'delete-frame',
+    configureServer(server) {
+      server.middlewares.use('/api/delete-frame', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        let body = ''
+        req.on('data', (chunk) => (body += chunk))
+        req.on('end', async () => {
+          try {
+            const { keys } = JSON.parse(body)
+
+            if (!Array.isArray(keys) || keys.length === 0 || keys.length > 1000) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'keys must be an array of 1–1000 entries' }))
+              return
+            }
+
+            for (const key of keys) {
+              if (!/^frames\/[^/]+\/\d+\.png$/.test(key)) {
+                res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: `Invalid key: ${key}` }))
+                return
+              }
+            }
+
+            const R2 = new S3Client({
+              region: 'auto',
+              endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+              credentials: {
+                accessKeyId: env.R2_ACCESS_KEY_ID,
+                secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+              },
+            })
+
+            await R2.send(
+              new DeleteObjectsCommand({
+                Bucket: env.R2_BUCKET_NAME,
+                Delete: { Objects: keys.map((Key) => ({ Key })) },
+              })
+            )
+
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ deleted: keys.length }))
+          } catch (err) {
+            console.error('Delete error:', err)
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Delete failed' }))
+          }
+        })
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [react(), tailwindcss(), apiDevPlugin(env), proxyFramePlugin(env)],
+    plugins: [react(), tailwindcss(), apiDevPlugin(env), proxyFramePlugin(env), deleteFramePlugin(env)],
   }
 })
