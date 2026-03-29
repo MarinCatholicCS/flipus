@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import FPSInput from './FPSSlider'
 
-export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect }) {
+export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect, fps = 4, onFpsChange }) {
   const [playing, setPlaying] = useState(false)
-  const [fps, setFps] = useState(4)
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect
             >
               {playing ? 'Pause' : 'Play'}
             </button>
-            <FPSInput value={fps} onChange={setFps} />
+            <FPSInput value={fps} onChange={onFpsChange} />
           </div>
           <span className="text-xs font-mono text-gray-400">
             {currentIndex + 1} / {frames.length}

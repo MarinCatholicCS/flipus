@@ -8,6 +8,7 @@ import { useFrames } from '../hooks/useFrames'
 import FlipbookPlayer from '../components/player/FlipbookPlayer'
 import FrameStrip from '../components/player/FrameStrip'
 import { deleteFrames } from '../lib/deleteFrames'
+import { exportGif } from '../lib/exportGif'
 
 export default function FlipbookViewer() {
   const { id } = useParams()
@@ -19,6 +20,8 @@ export default function FlipbookViewer() {
   const [draftTitle, setDraftTitle] = useState('')
   const [savingTitle, setSavingTitle] = useState(false)
   const [liked, setLiked] = useState(false)
+  const [fps, setFps] = useState(4)
+  const [gifProgress, setGifProgress] = useState(null)
 
   useEffect(() => {
     if (!id || !user) return
@@ -103,6 +106,25 @@ export default function FlipbookViewer() {
     if (e.key === 'Escape') cancelEditing()
   }
 
+  const handleDownloadGif = async () => {
+    if (frames.length === 0) return
+    setGifProgress(0)
+    try {
+      const blob = await exportGif(frames, fps, setGifProgress)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${flipbook.title || 'flipbook'}.gif`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('GIF export failed:', err)
+      alert('Failed to export GIF. Please try again.')
+    } finally {
+      setGifProgress(null)
+    }
+  }
+
   return (
     <div className="mx-auto flex max-w-[600px] flex-col items-center gap-5 px-6 py-8">
       <div className="flex w-full items-center justify-between gap-2">
@@ -159,6 +181,15 @@ export default function FlipbookViewer() {
             <span>{liked ? '♥' : '♡'}</span>
             <span>{flipbook.likeCount ?? 0}</span>
           </button>
+          <button
+            onClick={handleDownloadGif}
+            disabled={gifProgress !== null || frames.length === 0}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:border-violet-200 hover:text-violet-600 disabled:opacity-40"
+          >
+            {gifProgress !== null
+              ? `Exporting… ${Math.round(gifProgress * 100)}%`
+              : 'Download GIF'}
+          </button>
           <Link
             to={`/draw/${id}`}
             className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-700"
@@ -167,7 +198,7 @@ export default function FlipbookViewer() {
           </Link>
         </div>
       </div>
-      <FlipbookPlayer frames={frames} currentIndex={currentIndex} onSelect={setCurrentIndex} />
+      <FlipbookPlayer frames={frames} currentIndex={currentIndex} onSelect={setCurrentIndex} fps={fps} onFpsChange={setFps} />
       <div className="w-full rounded-xl border border-violet-100 bg-white shadow-sm">
         <FrameStrip
           frames={frames}
