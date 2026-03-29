@@ -3,7 +3,7 @@ import FPSInput from './FPSSlider'
 
 export default function FlipbookPlayer({ frames = [], currentIndex = 0, onSelect }) {
   const [playing, setPlaying] = useState(false)
-  const [fps, setFps] = useState(12)
+  const [fps, setFps] = useState(4)
   const intervalRef = useRef(null)
 
   useEffect(() => {
