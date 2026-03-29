@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, query, orderBy, onSnapshot, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, limit } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, getDoc, getDocs, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, limit, startAfter } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -14,13 +14,16 @@ export default function Feed() {
   const [loadingLiked, setLoadingLiked] = useState(true)
   const [loadingRecent, setLoadingRecent] = useState(true)
   const [loadingAll, setLoadingAll] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [lastDoc, setLastDoc] = useState(null)
+  const [hasMore, setHasMore] = useState(true)
   const [likedIds, setLikedIds] = useState(new Set())
   const [userNames, setUserNames] = useState({})
   const [showAllPosts, setShowAllPosts] = useState(false)
 
   // Most liked (excludes flipbooks with no likeCount field — never-liked flipbooks)
   useEffect(() => {
-    const q = query(collection(db, 'flipbooks'), orderBy('likeCount', 'desc'), limit(10))
+    const q = query(collection(db, 'flipbooks'), orderBy('likeCount', 'desc'), limit(6))
     const unsubscribe = onSnapshot(q, (snap) => {
       setLikedFlipbooks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
       setLoadingLiked(false)
@@ -30,7 +33,7 @@ export default function Feed() {
 
   // Most recent
   useEffect(() => {
-    const q = query(collection(db, 'flipbooks'), orderBy('createdAt', 'desc'), limit(10))
+    const q = query(collection(db, 'flipbooks'), orderBy('createdAt', 'desc'), limit(6))
     const unsubscribe = onSnapshot(q, (snap) => {
       setRecentFlipbooks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
       setLoadingRecent(false)
@@ -38,17 +41,32 @@ export default function Feed() {
     return unsubscribe
   }, [])
 
-  // All posts — only fetch when user expands the section
+  const PAGE_SIZE = 6
+
+  // All posts — fetch first page when user expands the section
   useEffect(() => {
     if (!showAllPosts) return
     setLoadingAll(true)
-    const q = query(collection(db, 'flipbooks'), orderBy('createdAt', 'desc'))
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setAllFlipbooks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-      setLoadingAll(false)
-    })
-    return unsubscribe
+    getDocs(query(collection(db, 'flipbooks'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE)))
+      .then((snap) => {
+        setAllFlipbooks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        setLastDoc(snap.docs[snap.docs.length - 1] || null)
+        setHasMore(snap.docs.length === PAGE_SIZE)
+        setLoadingAll(false)
+      })
   }, [showAllPosts])
+
+  const loadMore = async () => {
+    if (!lastDoc || loadingMore) return
+    setLoadingMore(true)
+    const snap = await getDocs(
+      query(collection(db, 'flipbooks'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE))
+    )
+    setAllFlipbooks((prev) => [...prev, ...snap.docs.map((d) => ({ id: d.id, ...d.data() }))])
+    setLastDoc(snap.docs[snap.docs.length - 1] || null)
+    setHasMore(snap.docs.length === PAGE_SIZE)
+    setLoadingMore(false)
+  }
 
   useEffect(() => {
     if (!user) { setLikedIds(new Set()); return }
@@ -158,7 +176,7 @@ export default function Feed() {
           <h2 className="text-lg font-semibold text-gray-800">All Posts</h2>
           {showAllPosts && (
             <button
-              onClick={() => setShowAllPosts(false)}
+              onClick={() => { setShowAllPosts(false); setAllFlipbooks([]); setLastDoc(null); setHasMore(true) }}
               className="text-sm text-violet-500 hover:text-violet-700 transition-colors"
             >
               Hide
@@ -185,13 +203,24 @@ export default function Feed() {
               <p className="text-gray-500">No flipbooks yet. Be the first to create one!</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {allFlipbooks.map((fb) => (
-                <Link key={fb.id} to={`/flipbook/${fb.id}`}>
-                  <FlipbookCard flipbook={withName(fb)} liked={likedIds.has(fb.id)} onLike={(e) => handleLike(e, fb)} />
-                </Link>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {allFlipbooks.map((fb) => (
+                  <Link key={fb.id} to={`/flipbook/${fb.id}`}>
+                    <FlipbookCard flipbook={withName(fb)} liked={likedIds.has(fb.id)} onLike={(e) => handleLike(e, fb)} />
+                  </Link>
+                ))}
+              </div>
+              {hasMore && (
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="mt-6 w-full rounded-xl border border-violet-200 bg-violet-50 py-3 text-sm font-medium text-violet-600 transition hover:bg-violet-100 disabled:opacity-50"
+                >
+                  {loadingMore ? 'Loading...' : 'Load More'}
+                </button>
+              )}
+            </>
           )
         )}
       </section>
