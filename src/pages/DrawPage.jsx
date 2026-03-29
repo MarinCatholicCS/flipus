@@ -63,11 +63,15 @@ export default function DrawPage() {
   // Combined onion sources: published frames + saved previous drafts
   // We compute this fresh every render from current state
   const onionSources = [
-    ...previewFrames.map((f) => ({ url: getProxyUrl(f.url), id: f.id })),
+    ...previewFrames.map((f) => ({
+      url: f.url,
+      proxyUrl: getProxyUrl(f.url),
+      id: f.id,
+    })),
     ...draftFrames
       .slice(0, currentDraftIndex)
       .filter((d) => d.previewUrl)
-      .map((d) => ({ url: d.previewUrl, id: d.previewUrl })),
+      .map((d) => ({ url: d.previewUrl, proxyUrl: d.previewUrl, id: d.previewUrl })),
   ]
 
   // Derive selected index from id — immune to index shifts from Firestore pushes
@@ -75,8 +79,11 @@ export default function DrawPage() {
     ? onionSources.findIndex((s) => s.id === selectedOnionId)
     : -1
 
+  // Use raw URL for display (matches the viewer), proxy URL for canvas painting (same-origin)
   const onionFrameUrl =
     selectedOnionIndex >= 0 ? onionSources[selectedOnionIndex].url : null
+  const onionProxyUrl =
+    selectedOnionIndex >= 0 ? onionSources[selectedOnionIndex].proxyUrl : null
 
   // Auto-select the last onion source whenever sources become available or selection becomes invalid
   useEffect(() => {
@@ -156,8 +163,8 @@ export default function DrawPage() {
   const handleUndo = () => canvasRef.current?.undo()
 
   const handlePaintOnionSkin = () => {
-    if (!onionFrameUrl) return
-    canvasRef.current?.paintOnionSkin(onionFrameUrl, 1, onionOffset)
+    if (!onionProxyUrl) return
+    canvasRef.current?.paintOnionSkin(onionProxyUrl, 1, onionOffset)
   }
 
   const handleOnionDragStart = useCallback((e) => {
